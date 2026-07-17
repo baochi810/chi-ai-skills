@@ -1,0 +1,27 @@
+{
+  "name": "chi-ai-skills",
+  "owner": {
+    "name": "baochi810",
+    "email": "npgbchi@gmail.com"
+  },
+  "metadata": {
+    "description": "Shared agent skills for the AI coding agents baochi810 uses",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "core-scripts",
+      "description": "Scaffold run.sh + release.sh + auto-update infrastructure (GitHub Release) for a project in any language. Ships battle-tested templates for macOS .app self-update.",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/core-scripts-setup"
+      ],
+      "commands": [
+        "./commands/core-scripts-setup.md"
+      ],
+      "category": "development",
+      "homepage": "https://github.com/baochi810/chi-ai-skills"
+    }
+  ]
+}
