@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Shared agent skills for the AI coding agents baochi810 uses",
-    "version": "0.1.0"
+    "version": "0.1.1"
   },
   "plugins": [
     {

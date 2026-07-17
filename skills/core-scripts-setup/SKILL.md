@@ -1,6 +1,7 @@
 ---
 name: core-scripts-setup
 description: Scaffold run.sh + release.sh + auto-update infrastructure for a project — any language. Use when the user wants to set up build/release/update scripts, publish a desktop app via GitHub Releases, add self-update to an installed app, or asks for run.sh/release.sh. Ships battle-tested templates (macOS .app self-update, GitHub Release publishing).
+version: 0.1.1
 ---
 
 # core-scripts-setup — scaffold run.sh, release.sh and the self-update path
@@ -119,11 +120,11 @@ REST API with `curl`.
 
 ### Branch A — macOS desktop app
 
-**A0. If the stack ships an updater, USE IT.** Electron → `electron-updater` (github provider
-in electron-builder.yml). Swift/native → **Sparkle**. Rust → `cargo-dist` + `axoupdater`.
-Go → `selfupdate`. Step 5 then shrinks to: wire the version (Step 2) into that tool's config,
-and make sure release.sh emits the asset the tool expects (`latest-mac.yml`, appcast) —
-**skip A1**.
+**A0. After the private/public auth decision, if the stack ships an updater, USE IT.**
+Electron → `electron-updater` (github provider in electron-builder.yml). Swift/native →
+**Sparkle**. Rust → `cargo-dist` + `axoupdater`. Go → `selfupdate`. Step 5 then shrinks to:
+wire the version (Step 2) into that tool's config, and make sure release.sh emits the asset the
+tool expects (`latest-mac.yml`, appcast) — **skip A1**.
 
 For **Swift/native + Sparkle**, this skill has no battle-tested Swift template yet; scaffold
 only when you can verify these details:
@@ -212,6 +213,10 @@ source stays TRACKED** — don't ignore it by mistake.
 - For any custom GitHub updater: the embedded version is right, private-repo token presence is
   checked without printing the token, no `gho_`/`gh auth token` fallback is embedded, and
   `codesign -dv` is quiet.
+- Review the diff: generated script comments and `echo` output are English, and existing
+  user/project comments were not translated or clobbered unless the change required it.
+- Primary toolchain commands are explicit (absolute or checked project-relative paths), not
+  accidental PATH-only `python`/`swiftc`/`node` calls hidden in generated scripts.
 - Version compare: try a few tuples (`(0,1,0,15) > (0,1,0,14)`).
 - **NO** `./release.sh`. No release. No push.
 

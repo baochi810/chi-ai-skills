@@ -66,11 +66,11 @@ else
         ;;
     esac
   else
-    printf 'GITHUB_TOKEN = ""\n' > "$SECRET"
     if [ "${REQUIRE_APP_TOKEN:-0}" = "1" ]; then
       echo "ERROR: no durable app token; set APP_TOKEN or write $SECRET"
       exit 1
     fi
+    printf 'GITHUB_TOKEN = ""\n' > "$SECRET"
     echo "→ WARNING: no token — this dev .app will NOT be able to self-update from a private repo"
   fi
 fi

@@ -47,6 +47,7 @@ Electron, Go, Rust and Swift all emit `.app` bundles and hit these exactly like 
 |---|---|---|
 | Nesting `python -c` inside `"$(...)"` to build JSON | bash brace-expansion eats the `{}` → `curl -d` sends nothing → a baffling release failure | Build the JSON with `printf '{"tag_name":"%s"…'` |
 | No `exec` in run.sh | Ctrl+C can't stop the child process | `exec` every long-running subcommand |
+| `exec` before follow-up work | Commands after `exec ./build.sh` never run, so `dev` builds but does not open the app | Use `exec` only when replacing the shell is the final action. If the script must run another command afterward, call the child normally |
 | Multiple uvicorn/gunicorn workers | The scheduler runs in several copies, in-process state fragments | Exactly 1 worker |
 | Dev writing into live data | Real data gets corrupted, and you find out late | Force `APP_DATA_DIR=./data` inside the dev subcommand itself |
 
