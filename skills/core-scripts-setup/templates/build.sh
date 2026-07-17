@@ -44,23 +44,34 @@ printf '{"x": %s, "y": %s, "z": %s, "k": %s, "version": "%s.%s.%s"}\n' \
 echo "→ version $VX.$VY.$VZ build $VK"
 
 # ── app_secret.py: a READ-ONLY token so the app can download private releases ──
-# ALWAYS embed it — the "Check for updates" button must never fail in a way that forces the user to run release.sh.
+# Release builds for a private repo must embed a durable fine-grained PAT.
 # If the repo is PUBLIC, drop this whole block (the updater can call the API without a token).
-# Precedence: a PAT already in the file → env APP_TOKEN → `gh auth token` (temporary) → empty.
-# Only github_pat_/ghp_ are DURABLE; `gh auth token` returns a rotating gho_ → always overwrite, never keep it.
+# Precedence: a PAT already in the file → explicit env APP_TOKEN → empty dev token.
+# Never fall back to `gh auth token`; that is release automation auth, not runtime app auth.
+mkdir -p "$(dirname "$SECRET")"
 have_pat() { grep -Eq 'GITHUB_TOKEN[[:space:]]*=[[:space:]]*"(github_pat_|ghp_)' "$SECRET" 2>/dev/null; }
 if have_pat; then
   echo "→ using the token already in $SECRET (durable)"
 else
   TOK="${APP_TOKEN:-}"
-  [ -n "$TOK" ] || TOK="$(gh auth token 2>/dev/null || true)"
   if [ -n "$TOK" ]; then
-    printf 'GITHUB_TOKEN = "%s"\n' "$TOK" > "$SECRET"
-    [ -n "${APP_TOKEN:-}" ] && echo "→ embedded the token from APP_TOKEN" \
-      || echo "→ embedded a TEMPORARY token from 'gh auth token' — paste a fine-grained PAT into $SECRET instead"
+    case "$TOK" in
+      github_pat_*|ghp_*)
+        printf 'GITHUB_TOKEN = "%s"\n' "$TOK" > "$SECRET"
+        echo "→ embedded the token from APP_TOKEN"
+        ;;
+      *)
+        echo "ERROR: APP_TOKEN must be a durable github_pat_ or ghp_ token; refusing to embed it"
+        exit 1
+        ;;
+    esac
   else
     printf 'GITHUB_TOKEN = ""\n' > "$SECRET"
-    echo "→ WARNING: no token — this .app will NOT be able to self-update"
+    if [ "${REQUIRE_APP_TOKEN:-0}" = "1" ]; then
+      echo "ERROR: no durable app token; set APP_TOKEN or write $SECRET"
+      exit 1
+    fi
+    echo "→ WARNING: no token — this dev .app will NOT be able to self-update from a private repo"
   fi
 fi
 

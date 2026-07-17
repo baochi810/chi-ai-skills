@@ -9,7 +9,8 @@
 #
 # Uploading uses `gh` (needs `gh auth login`). EMBEDDING a token in the app so it can fetch
 # new builds is build.sh's job — keep it separate from gh's own auth.
-# Write version.json + commit ONLY once build+upload succeed → a failed build never skips a version.
+# Write version.json + commit only once build/package succeeds. If a previous run already
+# committed the version but did not create the GitHub Release, retry that same tag.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -19,6 +20,7 @@ REPO="${APP_REPO_SLUG:-owner/repo}"      # the repo to publish to
 ASSET="$APP-macos-arm64.zip"
 DIST="dist"                              # where build.sh drops the .app
 PY=.venv/bin/python                      # only used to read/write JSON
+REQUIRE_APP_TOKEN="${REQUIRE_APP_TOKEN:-1}" # set to 0 only when release assets are public
 
 BUMP="${1:-build}"
 case "$BUMP" in build|patch|minor|major) ;; *)
@@ -31,8 +33,30 @@ gh auth status >/dev/null 2>&1 || { echo "ERROR: gh is not logged in — run: gh
 [ -f version.json ] || { echo "ERROR: no version.json — create it first:"; \
   echo "  printf '{\"x\": 0, \"y\": 1, \"z\": 0, \"k\": 0}\\n' > version.json"; exit 1; }
 
-# 1) compute the NEW version (don't write version.json yet — only on success)
-read -r VX VY VZ VK < <("$PY" - "$BUMP" <<'PY'
+# 1) compute the version. If HEAD is an unpublished release commit from a failed previous run,
+# reuse it instead of bumping again.
+read -r CUR_X CUR_Y CUR_Z CUR_K < <("$PY" - <<'PY'
+import json
+v = json.load(open("version.json"))
+print(v["x"], v["y"], v["z"], v["k"])
+PY
+)
+CUR_VER="$CUR_X.$CUR_Y.$CUR_Z"
+CUR_TAG="app-$CUR_X.$CUR_Y.$CUR_Z.$CUR_K"
+LAST_SUBJECT="$(git log -1 --pretty=%s 2>/dev/null || true)"
+RETRY_EXISTING=0
+
+if [ "$LAST_SUBJECT" = "release: v$CUR_VER build $CUR_K" ]; then
+  if gh release view "$CUR_TAG" --repo "$REPO" >/dev/null 2>&1; then
+    echo "ERROR: HEAD is already release $CUR_TAG and that GitHub Release exists."
+    echo "       Make a new source commit before releasing again, or clean up the existing release/tag explicitly."
+    exit 1
+  fi
+  RETRY_EXISTING=1
+  VX="$CUR_X"; VY="$CUR_Y"; VZ="$CUR_Z"; VK="$CUR_K"
+  echo "==> Retrying unpublished release $CUR_VER build $CUR_K  (tag $CUR_TAG)"
+else
+  read -r VX VY VZ VK < <("$PY" - "$BUMP" <<'PY'
 import json, sys
 v = json.load(open("version.json"))
 bump = sys.argv[1]
@@ -42,13 +66,14 @@ elif bump == "minor": v["y"] += 1
 elif bump == "major": v["x"] += 1
 print(v["x"], v["y"], v["z"], v["k"])
 PY
-)
+  )
+fi
 VER="$VX.$VY.$VZ"
 TAG="app-$VX.$VY.$VZ.$VK"
 echo "==> Release $VER build $VK  (tag $TAG)"
 
 # 2) build (build.sh embeds version + token and writes app-info.json)
-APP_VERSION="$VER" APP_BUILD="$VK" ./build.sh
+REQUIRE_APP_TOKEN="$REQUIRE_APP_TOKEN" APP_VERSION="$VER" APP_BUILD="$VK" ./build.sh
 
 [ -d "$DIST/$APP.app" ] || { echo "ERROR: $DIST/$APP.app not found after the build"; exit 1; }
 
@@ -57,16 +82,18 @@ APP_VERSION="$VER" APP_BUILD="$VK" ./build.sh
 ( cd "$DIST" && rm -f "$ASSET" && ditto -c -k --sequesterRsrc --keepParent "$APP.app" "$ASSET" )
 cp app-info.json "$DIST/app-info.json"
 
-# 4) write version.json + commit (only now that the build is good), then upload the release
-"$PY" - "$VX" "$VY" "$VZ" "$VK" <<'PY'
+# 4) write version.json + commit (only now that build/package is good), push, then upload
+if [ "$RETRY_EXISTING" = "0" ]; then
+  "$PY" - "$VX" "$VY" "$VZ" "$VK" <<'PY'
 import json, sys
 x, y, z, k = (int(a) for a in sys.argv[1:5])
 json.dump({"x": x, "y": y, "z": z, "k": k}, open("version.json", "w"), indent=2)
 open("version.json", "a").write("\n")
 PY
-git add version.json
-git commit -m "release: v$VER build $VK" >/dev/null 2>&1 || true
-git push origin HEAD >/dev/null 2>&1 || echo "  (warning: git push failed — carrying on with the release)"
+  git add version.json
+  git commit -m "release: v$VER build $VK" >/dev/null 2>&1 || true
+fi
+git push origin HEAD
 
 # 5) upload. app-info.json is a SEPARATE asset, a few dozen bytes → the updater fetches only
 #    this to compare versions, instead of pulling the whole multi-hundred-MB zip on every check.

@@ -11,6 +11,7 @@ Electron, Go, Rust and Swift all emit `.app` bundles and hit these exactly like 
 | Trap | Symptom | How to avoid it |
 |---|---|---|
 | Zipping/unzipping with `zip` instead of `ditto` | The swapped-in app **won't open**, or opens with a missing-framework error | `ditto -c -k --sequesterRsrc --keepParent` to compress, `ditto -x -k` to extract. An `.app` contains symlinks (frameworks/dylibs) and files needing the +x bit; plain zip loses both |
+| Linking an embedded framework without a bundle rpath | The build succeeds, but launch dies with `Library not loaded: @rpath/...` | Add an rpath that reaches the bundle, usually `@executable_path/../Frameworks`; verify with `otool -l` and by running `Contents/MacOS/<App>` |
 | Editing Info.plist **after** signing | Broken signature → Gatekeeper translocation → self-update dies | `codesign --force --deep --sign -` must be the **last** command in build.sh |
 | App translocation | The bundle swap "succeeds" but the old build keeps running forever | Spot `/AppTranslocation/` in the path → fail loudly, tell the user to drag the app into `/Applications` |
 | Swapping a bundle that's still running | The app crashes mid-swap, the bundle is left mangled | self-replace waits for the PID to die (`kill -0`, 1-hour ceiling) before swapping |
@@ -24,8 +25,10 @@ Electron, Go, Rust and Swift all emit `.app` bundles and hit these exactly like 
 | Sending `Authorization` to a pre-signed URL | Asset download returns **400** even though the token is valid | Disable auto-redirect, catch the 302, fetch `Location` **without** the auth header. Any HTTP client that follows redirects while keeping headers will hit this — check your stack's library |
 | Checking the version by downloading the whole zip | Clicking "check for updates" pulls hundreds of MB | Upload `app-info.json` as a **separate** asset (a few dozen bytes) and fetch only that to compare |
 | Comparing versions as strings | `"0.1.10" < "0.1.9"` → the new build is skipped | Compare as a **tuple** `(x,y,z,k)` |
-| Writing the version before the build finishes | Build fails → the version number skips ahead, and the next release overwrites the old one | Compute it in memory; write the file + commit **only after** the build and upload succeed |
-| Caching a `gho_` token | The app stops self-updating a few days later | Only `github_pat_`/`ghp_` tokens are durable and worth keeping; `gh auth token` returns a rotating `gho_` → always overwrite it |
+| Rerunning after a failed push/upload blindly bumps again | A failed release leaves a local release commit; the next run increments `k` again and skips a build number | Detect when `HEAD` is already `release: vX.Y.Z build K`. If the GitHub Release is missing, reuse that same tag; if it exists, stop and require explicit cleanup or a new source commit |
+| Embedding `gh auth token` in the app | A developer/session token gets shipped, rotates, or grants broader access than intended | Never use `gh auth token` for runtime update auth. Embed only an explicit fine-grained PAT from a gitignored secret file or explicit env var |
+| Pointing an updater at GitHub API `latest/download` URLs | Sparkle or a plain downloader gets 404/unauthorized instead of an asset | Browser download URLs are under `https://github.com/OWNER/REPO/releases/...`; API asset downloads require the Releases API, asset IDs, correct `Accept`, and auth |
+| Using Sparkle against private GitHub releases with no auth plan | Update checks work only on the developer's machine, or fail for every installed app | Make feed/assets public, implement a supported authenticated Sparkle path, or choose a custom authenticated updater with signature/hash verification |
 | Forgetting `Accept: application/octet-stream` | The API returns JSON metadata instead of the file | Set the right Accept header when downloading an asset |
 | Letting network errors propagate | No connection → **the app crashes** instead of reporting an error | The updater returns `{ok: False, error: …}`, never raises |
 
