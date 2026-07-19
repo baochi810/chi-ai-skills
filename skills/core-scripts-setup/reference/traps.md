@@ -13,10 +13,11 @@ Electron, Go, Rust and Swift all emit `.app` bundles and hit these exactly like 
 | Zipping/unzipping with `zip` instead of `ditto` | The swapped-in app **won't open**, or opens with a missing-framework error | `ditto -c -k --sequesterRsrc --keepParent` to compress, `ditto -x -k` to extract. An `.app` contains symlinks (frameworks/dylibs) and files needing the +x bit; plain zip loses both |
 | Linking an embedded framework without a bundle rpath | The build succeeds, but launch dies with `Library not loaded: @rpath/...` | Add an rpath that reaches the bundle, usually `@executable_path/../Frameworks`; verify with `otool -l` and by running `Contents/MacOS/<App>` |
 | Editing Info.plist **after** signing | Broken signature → Gatekeeper translocation → self-update dies | `codesign --force --deep --sign -` must be the **last** command in build.sh |
-| App translocation | The bundle swap "succeeds" but the old build keeps running forever | Spot `/AppTranslocation/` in the path → fail loudly, tell the user to drag the app into `/Applications` |
+| App translocation | The bundle swap "succeeds" but the old build keeps running forever | Spot `/AppTranslocation/` in the path → fail loudly, tell the user to install with `./run.sh install` or otherwise place the app in `/Applications` |
 | Swapping a bundle that's still running | The app crashes mid-swap, the bundle is left mangled | self-replace waits for the PID to die (`kill -0`, 1-hour ceiling) before swapping |
 | Deleting the old build before the new one lands | A copy that fails halfway → the app is gone entirely | `ditto` to `.new` → `mv` old to `.bak` → `mv` new into place → delete `.bak`; on failure, restore `.bak` |
 | Forgetting `CFBundleVersion` | Finder → Get Info shows the wrong version | PlistBuddy `Set` \|\| `Add`, short = `x.y.z`, bundle = `k` |
+| Expecting Open With after copy only | The app installs but does not appear in Finder's Open With menu | Add real `CFBundleDocumentTypes` entries before signing, then run `lsregister -f /Applications/<App>.app`; registration cannot invent file associations |
 
 ## Every app downloading releases from GitHub — regardless of language
 

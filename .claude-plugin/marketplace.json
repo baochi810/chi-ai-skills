@@ -6,12 +6,12 @@
   },
   "metadata": {
     "description": "Shared agent skills for the AI coding agents baochi810 uses",
-    "version": "0.1.1"
+    "version": "0.1.2"
   },
   "plugins": [
     {
       "name": "core-scripts",
-      "description": "Scaffold run.sh + release.sh + auto-update infrastructure (GitHub Release) for a project in any language. Ships battle-tested templates for macOS .app self-update.",
+      "description": "Scaffold run.sh + release.sh + install + auto-update infrastructure (GitHub Release) for a project in any language. Ships battle-tested templates for macOS .app install/self-update.",
       "source": "./",
       "strict": false,
       "skills": [

@@ -98,8 +98,10 @@ PLIST="$APP_DIR/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VK" "$PLIST" 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $VK" "$PLIST"
 
-# Permissions/ATS — add only the lines the project ACTUALLY needs. Without the usage description
-# TCC blocks outright, and WKWebView never gets to ask. For example:
+# Permissions/ATS/Open With — add only the lines the project ACTUALLY needs. Without the usage
+# description TCC blocks outright, and WKWebView never gets to ask. Open With also needs real
+# CFBundleDocumentTypes entries before signing; `./run.sh install` only registers what Info.plist
+# declares. For example:
 # /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST" 2>/dev/null || true
 # /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST" 2>/dev/null || true
 # /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string $APP uses the webcam to …" "$PLIST" 2>/dev/null || true

@@ -1,14 +1,14 @@
 ---
 name: core-scripts-setup
-description: Scaffold run.sh + release.sh + auto-update infrastructure for a project — any language. Use when the user wants to set up build/release/update scripts, publish a desktop app via GitHub Releases, add self-update to an installed app, or asks for run.sh/release.sh. Ships battle-tested templates (macOS .app self-update, GitHub Release publishing).
-version: 0.1.1
+description: Scaffold run.sh + release.sh + auto-update infrastructure for a project — any language. Use when the user wants to set up build/release/install scripts, publish a desktop app via GitHub Releases, install a macOS .app into /Applications, register it for Open With, add self-update to an installed app, or asks for run.sh/release.sh/run.sh install. Ships battle-tested templates (macOS .app install/self-update, GitHub Release publishing).
+version: 0.1.2
 ---
 
-# core-scripts-setup — scaffold run.sh, release.sh and the self-update path
+# core-scripts-setup — scaffold run.sh, release.sh, install and the self-update path
 
 Scaffold the standard script set for the project in the current directory: `run.sh`
-(launcher), `release.sh` (publishing), and the infrastructure that lets an **already-installed
-build update itself**.
+(launcher, including local install), `release.sh` (publishing), and the infrastructure that
+lets an **already-installed build update itself**.
 
 ## Rules
 
@@ -34,7 +34,7 @@ project and edit the `CONFIG` block at the top — don't retype it from scratch:
 
 | File | Use for | Edit |
 |---|---|---|
-| `templates/run.sh` | every project | the CONFIG block + subcommands |
+| `templates/run.sh` | every project | the CONFIG block + subcommands, especially `install` for macOS `.app` projects |
 | `templates/release.sh` | every project publishing via GitHub | `APP`, `REPO`, `ASSET`, `DIST` |
 | `templates/build.sh` | Python/PyInstaller → `.app` | `APP`, `BUNDLE_ID`, `ENTRY`, `ICON` |
 | `templates/updater.py` | Python/PyInstaller self-update | `APP`, `REPO`, `ASSET_ZIP` |
@@ -58,6 +58,8 @@ in blood — don't strip it.
    `Info.plist` · `*.spec`. Several places → settle on **one** source of truth.
 6. **Git**: `git remote -v` → owner/repo; private or public (`gh repo view --json isPrivate`).
 7. **What already exists**: `run.sh`, `release.sh`, `build.sh`, `.gitignore`, `gh auth status`.
+8. **Open With needs** for macOS apps: intended file extensions/UTIs, whether the app already
+   declares `CFBundleDocumentTypes`, and whether it needs `UTImportedTypeDeclarations`.
 
 ## Step 1 — Settle the parameters
 
@@ -99,8 +101,26 @@ build time.
 
 Copy `templates/run.sh`. It's pure shell, so it looks the same on every stack. Take the
 subcommands from Step 0 — usually: `dev`/`app` · `build` · `release` (delegates to
-`./release.sh "$@"`) · `deploy` · `test` · `help`. `chmod +x`. Traps: see
-`reference/traps.md` §shell.
+`./release.sh "$@"`) · `install` for macOS `.app` projects · `deploy` · `test` · `help`.
+`chmod +x`. Traps: see `reference/traps.md` §shell.
+
+For every Branch A macOS desktop app, `run.sh` must include `install`. It builds first, then
+copies the `.app` into `/Applications`, then registers the installed bundle with Launch
+Services so Finder's Open With menu can see it:
+
+1. Use `ditto`, not `cp -R`, when copying `.app` bundles.
+2. Install to `/Applications/<App>.app`, using `sudo` only when `/Applications` is not writable.
+3. Refuse or warn clearly when the target app appears to be running.
+4. Run
+   `/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/<App>.app"`
+   after the copy.
+5. If Open With support is expected, make sure `Info.plist` declares the file types before
+   signing: `CFBundleDocumentTypes` for the app's document roles, and
+   `UTImportedTypeDeclarations` only when the app owns or introduces custom UTIs. `lsregister`
+   can register only what the bundle declares; it cannot invent file associations.
+
+Do not implement `install` as `exec ./build.sh` followed by more commands; commands after
+`exec` will never run. Call the build script normally, then copy/register.
 
 ## Step 4 — release.sh
 
@@ -143,6 +163,9 @@ only when you can verify these details:
   make those assets public, provide a supported authenticated downloader/delegate, or choose an
   A1-style custom GitHub updater with its own signature/hash verification. State this tradeoff
   before implementing.
+- For Open With support, add the document type declarations in the app's native project settings
+  or generated Info.plist before signing, then rely on `./run.sh install` to register the
+  installed app with Launch Services.
 
 **A1. Stack has nothing (typically Python/PyInstaller) → build it yourself.** Copy
 `templates/updater.py` + `templates/build.sh`. Five pieces, all required:
@@ -203,8 +226,14 @@ source stays TRACKED** — don't ignore it by mistake.
 - `bash -n run.sh release.sh build.sh` — syntax.
 - `./run.sh help` — actually run it, see the usage text.
 - `./run.sh build` — a real build.
+- For a Branch A macOS `.app`: `./run.sh install` — build, copy into `/Applications`, register
+  with Launch Services, then confirm `/Applications/<App>.app` exists. If the user explicitly
+  requested build-only work or the environment cannot modify `/Applications`, state that the
+  install step was not run and why.
 - For an `.app`: run the built executable briefly from
   `Contents/MacOS/<App>` to catch dyld/link errors, then open the app if practical.
+- For Open With support: verify `Info.plist` contains the intended `CFBundleDocumentTypes`
+  entries and that `lsregister -f /Applications/<App>.app` exits successfully.
 - For an `.app` with bundled frameworks: `otool -L` shows the expected framework install names,
   and `otool -l` shows an rpath that can reach `Contents/Frameworks`.
 - For any Sparkle app: `SUPublicEDKey` is present, the generated appcast has signed enclosures,
@@ -231,8 +260,10 @@ Write the report to the user **in Vietnamese**, keep it short:
 4. **What the user has to do by hand** — the part everyone forgets:
    - Create the fine-grained PAT (Contents: Read-only) → paste it into the secret file.
    - `gh auth login` if not done yet.
-   - The **first** `.app` gets installed by hand: build → drag into `/Applications`. After
-     that the Update menu takes over.
+   - The **first** `.app` gets installed with `./run.sh install`: build → copy into
+     `/Applications` → register with Launch Services. After that the Update menu takes over.
+   - If the app should appear in Open With, confirm the built `Info.plist` declares the file
+     types it opens; Launch Services registration only reads those declarations.
    - ⚠️ An installed `.app` with **no token embedded** cannot self-update — it needs one
      manual reinstall.
    - ⚠️ The token lives inside the `.app` → **don't share the `.app` file with anyone**.

@@ -8,7 +8,7 @@ Claude Code, Codex, Cursor, Gemini CLI, and any other agent that reads `SKILL.md
 
 | Skill | What it does |
 |---|---|
-| [`core-scripts-setup`](skills/core-scripts-setup/) | Scaffolds `run.sh` + `release.sh` + auto-update infrastructure over GitHub Releases, for a project in any language. Ships templates that have run in production for macOS `.app` self-update. |
+| [`core-scripts-setup`](skills/core-scripts-setup/) | Scaffolds `run.sh` + `release.sh` + local install + auto-update infrastructure over GitHub Releases, for a project in any language. Ships templates that have run in production for macOS `.app` install/self-update. |
 
 ## Install
 

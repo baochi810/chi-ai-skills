@@ -8,6 +8,8 @@ set -e
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 APP="MyApp"                          # display name
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+INSTALL_DIR="/Applications"
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 # Toolchain: ALWAYS write the absolute path, never leave it to PATH.
 PY="$SCRIPT_DIR/.venv/bin/python"
@@ -32,6 +34,7 @@ usage() {
     echo ""
     echo -e "  ${YELLOW}dev${NC}       - Run the dev build (data in ./data, NEVER touches live data)"
     echo -e "  ${YELLOW}build${NC}     - Package the app"
+    echo -e "  ${YELLOW}install${NC}   - Build and install the macOS app into /Applications"
     echo -e "  ${YELLOW}release${NC}   - Publish a new version ${CYAN}[build|patch|minor|major]${NC}"
     echo -e "  ${YELLOW}test${NC}      - Run the tests"
     echo -e "  ${YELLOW}help${NC}      - This help text"
@@ -44,6 +47,57 @@ need_venv() {
     echo -e "${RED}ERROR: no .venv — run this first:${NC}"
     echo "  python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
     exit 1
+}
+
+run_install_cmd() {
+    if [ -w "$INSTALL_DIR" ]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
+install_app() {
+    [ "$(uname -s)" = "Darwin" ] || { echo -e "${RED}ERROR: install is macOS-only${NC}"; exit 1; }
+    [ -x "$SCRIPT_DIR/build.sh" ] || { echo -e "${RED}ERROR: no executable build.sh${NC}"; exit 1; }
+    command -v ditto >/dev/null || { echo -e "${RED}ERROR: ditto is required on macOS${NC}"; exit 1; }
+
+    cd "$SCRIPT_DIR"
+    # Do not exec build.sh here; install must copy and register the app after the build exits.
+    REQUIRE_APP_TOKEN="${REQUIRE_APP_TOKEN:-0}" "$SCRIPT_DIR/build.sh" "${@:1}"
+
+    APP_DIR="$SCRIPT_DIR/dist/$APP.app"
+    DEST="$INSTALL_DIR/$APP.app"
+    STAGED="$INSTALL_DIR/.$APP.app.installing.$$"
+    BACKUP="$INSTALL_DIR/.$APP.app.previous.$$"
+    [ -d "$APP_DIR" ] || { echo -e "${RED}ERROR: $APP_DIR not found after build${NC}"; exit 1; }
+
+    if pgrep -x "$APP" >/dev/null 2>&1; then
+        echo -e "${RED}ERROR: quit $APP before installing over it${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}Installing $APP.app into $INSTALL_DIR…${NC}"
+    run_install_cmd rm -rf "$STAGED" "$BACKUP"
+    run_install_cmd ditto "$APP_DIR" "$STAGED"
+    if [ -d "$DEST" ]; then
+        run_install_cmd mv "$DEST" "$BACKUP"
+    fi
+    run_install_cmd mv "$STAGED" "$DEST"
+    run_install_cmd rm -rf "$BACKUP"
+
+    if [ -x "$LSREGISTER" ]; then
+        "$LSREGISTER" -f "$DEST"
+        echo -e "${GREEN}Registered with Launch Services${NC}"
+    else
+        echo -e "${YELLOW}WARNING: lsregister not found; Open With may not refresh${NC}"
+    fi
+
+    if ! /usr/libexec/PlistBuddy -c "Print :CFBundleDocumentTypes" "$DEST/Contents/Info.plist" >/dev/null 2>&1; then
+        echo -e "${YELLOW}WARNING: Open With needs CFBundleDocumentTypes in Info.plist${NC}"
+    fi
+
+    echo -e "${GREEN}DONE: $DEST${NC}"
 }
 
 case "${1:-help}" in
@@ -60,6 +114,10 @@ case "${1:-help}" in
     build)
         header
         exec "$SCRIPT_DIR/build.sh" "${@:2}"
+        ;;
+    install)
+        header
+        install_app "${@:2}"
         ;;
     release)
         header

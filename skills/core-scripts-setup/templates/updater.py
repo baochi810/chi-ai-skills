@@ -158,9 +158,9 @@ def check_latest() -> dict:
     cur = app_info()
     if not token:
         return {"ok": False, "current": cur,
-                "error": "This .app has no update information embedded. Download and reinstall "
-                         "the latest build once (drag it into /Applications); the update button "
-                         "will work by itself from then on."}
+                "error": "This .app has no update information embedded. Reinstall the latest "
+                         "build once with ./run.sh install, or drag a downloaded build into "
+                         "/Applications; the update button will work by itself from then on."}
     try:
         assets = _latest_assets(token)
     except Exception as e:
@@ -208,14 +208,15 @@ def download_and_install(bundle_path: str, relaunch: bool = True) -> dict:
     bundle = Path(bundle_path)
     # TRAP: app translocation — Gatekeeper runs the app from a read-only copy, so swapping is pointless.
     if "/AppTranslocation/" in str(bundle):
-        return {"ok": False, "error": f"The app is running translocated — drag {APP}.app into "
-                                      "/Applications and try again."}
+        return {"ok": False, "error": f"The app is running translocated — install {APP}.app "
+                                      "with ./run.sh install or move it into /Applications, "
+                                      "then try again."}
     if bundle.suffix != ".app" or not (bundle / "Contents" / "MacOS").is_dir():
         return {"ok": False, "error": f"Not an .app bundle: {bundle}"}
 
     token = _token()
     if not token:
-        return {"ok": False, "error": "This .app has no update information embedded — reinstall it by hand."}
+        return {"ok": False, "error": "This .app has no update information embedded — reinstall it with ./run.sh install."}
 
     try:
         assets = _latest_assets(token)
