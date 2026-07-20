@@ -91,6 +91,12 @@ json.dump({"x": x, "y": y, "z": z, "k": k}, open("version.json", "w"), indent=2)
 open("version.json", "a").write("\n")
 PY
   git add version.json
+  # Catalog metadata, when the repo ships it: build.sh regenerates icon.png, so it has to go
+  # into this commit too. Skip it and the catalog keeps serving the OLD icon forever — the
+  # regeneration would be purely local.
+  for f in tool.json icon.png; do
+    [ -f "$f" ] && git add "$f" || true
+  done
   git commit -m "release: v$VER build $VK" >/dev/null 2>&1 || true
 fi
 git push origin HEAD

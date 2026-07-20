@@ -1,0 +1,14 @@
+{
+  "id": "myapp",
+  "name": "MyApp",
+  "description": "One line, shown on the catalog card.",
+  "icon": "icon.png",
+  "kind": "binary",
+  "platforms": {
+    "mac": {
+      "asset": "MyApp-macos-arm64.zip",
+      "install_to": "/Applications",
+      "app_name": "MyApp.app"
+    }
+  }
+}

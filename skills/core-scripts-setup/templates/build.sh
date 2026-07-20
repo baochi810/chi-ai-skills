@@ -43,6 +43,27 @@ printf '{"x": %s, "y": %s, "z": %s, "k": %s, "version": "%s.%s.%s"}\n' \
   "$VX" "$VY" "$VZ" "$VK" "$VX" "$VY" "$VZ" > app-info.json
 echo "→ version $VX.$VY.$VZ build $VK"
 
+# ── Catalog icon (only when the repo ships tool.json) ─────────────────────────
+# TRAP: a hand-copied icon.png at the repo root goes stale SILENTLY. The next time the app
+# icon is redesigned the .app looks right while the catalog card keeps showing the old icon
+# forever, and nobody notices. Always regenerate it here, from the same source the bundle
+# icon comes from, and let release.sh commit it.
+# 256px on purpose: the catalog inlines the icon as base64, so a 1024px master costs ~1 MB
+# per tool on every refresh.
+if [ -f tool.json ]; then
+  ICON_TMP="$(mktemp -t catalog-icon).png"
+  if /usr/bin/sips -s format png -Z 256 "$ICON" --out "$ICON_TMP" >/dev/null 2>&1; then
+    # Rewrite only on a real change, so a plain rebuild doesn't dirty the working tree.
+    if ! cmp -s "$ICON_TMP" icon.png; then
+      mv "$ICON_TMP" icon.png
+      echo "→ refreshed icon.png (256px) from $ICON"
+    fi
+  else
+    echo "→ WARNING: could not regenerate icon.png from $ICON — the catalog may show a stale icon"
+  fi
+  rm -f "$ICON_TMP"
+fi
+
 # ── app_secret.py: a READ-ONLY token so the app can download private releases ──
 # Release builds for a private repo must embed a durable fine-grained PAT.
 # If the repo is PUBLIC, drop this whole block (the updater can call the API without a token).

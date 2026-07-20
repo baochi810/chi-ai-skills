@@ -33,6 +33,20 @@ Electron, Go, Rust and Swift all emit `.app` bundles and hit these exactly like 
 | Forgetting `Accept: application/octet-stream` | The API returns JSON metadata instead of the file | Set the right Accept header when downloading an asset |
 | Letting network errors propagate | No connection → **the app crashes** instead of reporting an error | The updater returns `{ok: False, error: …}`, never raises |
 
+## Tool catalog / "app library" entries (Step 5, A2)
+
+A catalog reads `tool.json` + `icon.png` from the **repo** and the version from the latest
+**Release**. Everything below has already shipped a wrong card.
+
+| Trap | Symptom | How to avoid it |
+|---|---|---|
+| Hand-copying `icon.png` to the repo root | The card shows the **old** icon forever after the icon is redesigned — and nobody notices, because the `.app` itself looks correct | Regenerate `icon.png` in build.sh from the same source the bundle icon comes from, and commit it in release.sh |
+| Regenerating the icon but not committing it | The refresh is purely local; GitHub — and therefore the catalog — never sees it | `git add icon.png` in the release commit (the release.sh template does this) |
+| Committing the 1024px master as `icon.png` | Every catalog refresh pulls ~1 MB per tool, because the icon is inlined as base64 | Downscale to 256px |
+| `app_name` not matching the folder inside the zip | Download and extract succeed, then install fails at the final step | Use the exact `.app` folder name `ditto --keepParent` archived, case-sensitive |
+| Putting a version inside `tool.json` | The card shows a version that never changes | `tool.json` is **static only**; the version comes from the Release's `app-info.json` |
+| A catalog PAT scoped to just the main app repo | The catalog lists **nothing**, with no error message | Fine-grained PAT covering every tool repo, Contents + Metadata: Read |
+
 ## Python/PyInstaller only
 
 | Trap | Symptom | How to avoid it |
