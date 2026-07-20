@@ -67,7 +67,7 @@ fi
 # ── app_secret.py: a READ-ONLY token so the app can download private releases ──
 # Release builds for a private repo must embed a durable fine-grained PAT.
 # If the repo is PUBLIC, drop this whole block (the updater can call the API without a token).
-# Precedence: a PAT already in the file → explicit env APP_TOKEN → empty dev token.
+# Precedence: a PAT already saved by setup.sh → explicit env APP_TOKEN → empty dev token.
 # Never fall back to `gh auth token`; that is release automation auth, not runtime app auth.
 mkdir -p "$(dirname "$SECRET")"
 have_pat() { grep -Eq 'GITHUB_TOKEN[[:space:]]*=[[:space:]]*"(github_pat_|ghp_)' "$SECRET" 2>/dev/null; }
@@ -88,7 +88,7 @@ else
     esac
   else
     if [ "${REQUIRE_APP_TOKEN:-0}" = "1" ]; then
-      echo "ERROR: no durable app token; set APP_TOKEN or write $SECRET"
+      echo "ERROR: no durable app token; run ./setup.sh or set APP_TOKEN"
       exit 1
     fi
     printf 'GITHUB_TOKEN = ""\n' > "$SECRET"

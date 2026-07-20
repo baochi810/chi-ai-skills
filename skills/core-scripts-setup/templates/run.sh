@@ -32,6 +32,7 @@ usage() {
     header
     echo -e "  ${BOLD}Usage:${NC} ./run.sh <command>"
     echo ""
+    echo -e "  ${YELLOW}setup${NC}     - Store the GitHub PAT used by build/update"
     echo -e "  ${YELLOW}dev${NC}       - Run the dev build (data in ./data, NEVER touches live data)"
     echo -e "  ${YELLOW}build${NC}     - Package the app"
     echo -e "  ${YELLOW}install${NC}   - Build and install the macOS app into /Applications"
@@ -101,6 +102,10 @@ install_app() {
 }
 
 case "${1:-help}" in
+    setup)
+        header
+        exec "$SCRIPT_DIR/setup.sh" "${@:2}"
+        ;;
     dev)
         header
         need_venv

@@ -1,14 +1,14 @@
 ---
 name: core-scripts-setup
-description: Scaffold run.sh + release.sh + auto-update infrastructure for a project — any language. Use when the user wants to set up build/release/install scripts, publish a desktop app via GitHub Releases, install a macOS .app into /Applications, register it for Open With, add self-update to an installed app, list an app in a tool catalog / app library (tool.json + icon), or asks for run.sh/release.sh/run.sh install. Ships battle-tested templates (macOS .app install/self-update, GitHub Release publishing, catalog metadata).
-version: 0.1.3
+description: Scaffold run.sh + setup.sh + release.sh + auto-update infrastructure for a project — any language. Use when the user wants to set up build/release/install scripts, store a durable GitHub PAT for release builds and runtime updates, publish a desktop app via GitHub Releases, install a macOS .app into /Applications, register it for Open With, add self-update to an installed app, list an app in a tool catalog / app library (tool.json + icon), or asks for run.sh/setup.sh/release.sh/run.sh install. Ships battle-tested templates (macOS .app install/self-update, GitHub Release publishing, PAT setup, catalog metadata).
+version: 0.1.4
 ---
 
-# core-scripts-setup — scaffold run.sh, release.sh, install and the self-update path
+# core-scripts-setup — scaffold setup.sh, run.sh, release.sh, install and the self-update path
 
-Scaffold the standard script set for the project in the current directory: `run.sh`
-(launcher, including local install), `release.sh` (publishing), and the infrastructure that
-lets an **already-installed build update itself**.
+Scaffold the standard script set for the project in the current directory: `setup.sh` (durable
+PAT setup), `run.sh` (launcher, including local install), `release.sh` (publishing), and the
+infrastructure that lets an **already-installed build update itself**.
 
 ## Rules
 
@@ -24,6 +24,8 @@ lets an **already-installed build update itself**.
 - **Use what the stack already ships; don't hand-roll a replacement** — see Step 5, branch A0.
 - **Never embed `gh auth token` into an app.** Release automation may use `gh`; runtime update
   auth must come only from an explicit durable secret file or explicit env var.
+- **Never ask the user to paste a PAT into chat.** Scaffold `setup.sh`; the user runs it in
+  their own terminal so the token goes straight into the gitignored secret file.
 - If the update assets live in a **private** GitHub repo, decide the auth path before writing
   updater code. Do not wire a public-feed updater to private GitHub URLs and hope it works.
 
@@ -34,6 +36,7 @@ project and edit the `CONFIG` block at the top — don't retype it from scratch:
 
 | File | Use for | Edit |
 |---|---|---|
+| `templates/setup.sh` | projects that embed a GitHub PAT for private release builds/runtime updates | `SECRET`, `SECRET_FORMAT` |
 | `templates/run.sh` | every project | the CONFIG block + subcommands, especially `install` for macOS `.app` projects |
 | `templates/release.sh` | every project publishing via GitHub | `APP`, `REPO`, `ASSET`, `DIST` |
 | `templates/build.sh` | Python/PyInstaller → `.app` | `APP`, `BUNDLE_ID`, `ENTRY`, `ICON` |
@@ -58,7 +61,8 @@ in blood — don't strip it.
 5. **Where the version lives**: `version.json` · `version.py` · `package.json` · `Cargo.toml` ·
    `Info.plist` · `*.spec`. Several places → settle on **one** source of truth.
 6. **Git**: `git remote -v` → owner/repo; private or public (`gh repo view --json isPrivate`).
-7. **What already exists**: `run.sh`, `release.sh`, `build.sh`, `.gitignore`, `gh auth status`.
+7. **What already exists**: `setup.sh`, `run.sh`, `release.sh`, `build.sh`, `.gitignore`,
+   existing secret files, `gh auth status`.
 8. **Open With needs** for macOS apps: intended file extensions/UTIs, whether the app already
    declares `CFBundleDocumentTypes`, and whether it needs `UTImportedTypeDeclarations`.
 
@@ -75,6 +79,7 @@ undecidable, **in one round**, each with a proposed default so the user only has
 | Build command | stack table below |
 | Dev run command | README / `package.json` |
 | Env prefix | app name in UPPERCASE (`AIHUB_`, `TQAUTO_`…) |
+| Runtime token secret | `packaging/app_secret.py` for the Python template; otherwise the updater's expected secret file |
 
 | Stack | Build | Desktop packaging |
 |---|---|---|
@@ -98,12 +103,27 @@ If the stack already has a natural home for the version (`package.json`, `Cargo.
 Everywhere else (Info.plist, a constant in code, app-info.json) is **generated** from it at
 build time.
 
-## Step 3 — run.sh
+## Step 3 — setup.sh + run.sh
+
+Copy `templates/setup.sh` whenever the app needs a durable GitHub PAT for private release
+assets or runtime update checks. Configure `SECRET` and `SECRET_FORMAT` to match the build
+pipeline:
+
+- Python/PyInstaller template: keep `SECRET=packaging/app_secret.py` and
+  `SECRET_FORMAT=python`; `build.sh` embeds the generated `GITHUB_TOKEN`.
+- Other stacks: keep the same prompt/validation/gitignore flow, but set
+  `APP_SECRET_FILE`/`SECRET` and `APP_SECRET_FORMAT=plain` or patch the writer to match the
+  runtime updater's expected secret format.
+
+`setup.sh` must hide terminal input, accept `APP_TOKEN=... ./setup.sh` for non-interactive use,
+validate only `github_pat_`/`ghp_` token prefixes, write the secret with owner-only
+permissions where possible, and add the exact secret path to `.gitignore`. It must never print
+the token and must never call `gh auth token`.
 
 Copy `templates/run.sh`. It's pure shell, so it looks the same on every stack. Take the
-subcommands from Step 0 — usually: `dev`/`app` · `build` · `release` (delegates to
-`./release.sh "$@"`) · `install` for macOS `.app` projects · `deploy` · `test` · `help`.
-`chmod +x`. Traps: see `reference/traps.md` §shell.
+subcommands from Step 0 — usually: `setup` (delegates to `./setup.sh "$@"`) · `dev`/`app` ·
+`build` · `release` (delegates to `./release.sh "$@"`) · `install` for macOS `.app` projects ·
+`deploy` · `test` · `help`. `chmod +x`. Traps: see `reference/traps.md` §shell.
 
 For every Branch A macOS desktop app, `run.sh` must include `install`. It builds first, then
 copies the `.app` into `/Applications`, then registers the installed bundle with Launch
@@ -173,11 +193,13 @@ only when you can verify these details:
 
 1. **`app-info.json`** `{x,y,z,k,version}` — generated by the build, embedded into the bundle
    **and** uploaded as a release asset.
-2. **A read-only token embedded at build time** — only when the repo is **private**. Keep the
-   secret file gitignored (`packaging/app_secret.py`) and embed it into **every release build**: the
-   "Check for updates" button must never fail in a way that forces the user to go run
-   release.sh. Fine-grained PAT, scoped to that repo, **Contents: Read-only**, 1-year expiry.
-   Accept the token only from that secret file or an explicit env var such as `APP_TOKEN`.
+2. **A read-only token embedded at build time** — only when the repo is **private**. Copy
+   `templates/setup.sh` and keep the secret file gitignored (`packaging/app_secret.py` by
+   default). The user runs `./run.sh setup` or `./setup.sh` locally to paste the PAT; do not ask
+   them to paste it into chat. Embed the saved token into **every release build**: the "Check
+   for updates" button must never fail in a way that forces the user to go run release.sh.
+   Fine-grained PAT, scoped to that repo, **Contents: Read-only**, 1-year expiry. Accept the
+   token only from that secret file or an explicit env var such as `APP_TOKEN`.
    **Never** fall back to `gh auth token` for the embedded runtime token.
    For private release assets, make `release.sh` require the token (`REQUIRE_APP_TOKEN=1`);
    set that to `0` only when the appcast/assets are public.
@@ -246,13 +268,16 @@ This skill ships no template for either → say plainly that it's untrodden grou
 
 ### Every branch, before you finish
 
-`.gitignore` must cover: the secret file (`app_secret.py`/`.release_token`), `dist/`, `build/`,
-auto-generated artifacts (`*.spec` if a tool generates it), `app-info.json`. **The version
-source stays TRACKED** — don't ignore it by mistake.
+`.gitignore` must cover: the secret file (`app_secret.py`/`.release_token`; `setup.sh` adds the
+configured path), `dist/`, `build/`, auto-generated artifacts (`*.spec` if a tool generates
+it), `app-info.json`. **The version source stays TRACKED** — don't ignore it by mistake.
 
 ## Step 6 — Verify (mandatory)
 
-- `bash -n run.sh release.sh build.sh` — syntax.
+- `bash -n setup.sh run.sh release.sh build.sh` — syntax.
+- `APP_TOKEN=github_pat_testtoken123 ./setup.sh` in a temporary copy, or an equivalent dry
+  test, to verify it writes the configured secret path and `.gitignore` entry without printing
+  the token. Do not write a dummy PAT into the user's real project.
 - `./run.sh help` — actually run it, see the usage text.
 - `./run.sh build` — a real build.
 - For a Branch A macOS `.app`: `./run.sh install` — build, copy into `/Applications`, register
@@ -291,7 +316,8 @@ Write the report to the user **in Vietnamese**, keep it short:
    **say plainly that it's a new path, not battle-tested the way Python/macOS is**.
 3. What you verified and the **real** results (if it failed, say it failed and paste the log).
 4. **What the user has to do by hand** — the part everyone forgets:
-   - Create the fine-grained PAT (Contents: Read-only) → paste it into the secret file.
+   - Create the fine-grained PAT (Contents: Read-only) → run `./run.sh setup` and paste it into
+     the hidden terminal prompt. Do not paste the PAT into chat.
    - `gh auth login` if not done yet.
    - The **first** `.app` gets installed with `./run.sh install`: build → copy into
      `/Applications` → register with Launch Services. After that the Update menu takes over.
